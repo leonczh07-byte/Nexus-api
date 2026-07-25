@@ -41,19 +41,21 @@ type AliVideoMedia struct {
 
 // AliVideoInput 视频输入参数
 type AliVideoInput struct {
-	Prompt         string          `json:"prompt,omitempty"`          // 文本提示词
-	ImgURL         string          `json:"img_url,omitempty"`         // 首帧图像URL或Base64（图生视频）
-	FirstFrameURL  string          `json:"first_frame_url,omitempty"` // 首帧图片URL（首尾帧生视频）
-	LastFrameURL   string          `json:"last_frame_url,omitempty"`  // 尾帧图片URL（首尾帧生视频）
-	AudioURL       string          `json:"audio_url,omitempty"`       // 音频URL（wan2.5支持）
-	Media          []AliVideoMedia `json:"media,omitempty"`           // 媒体列表（wan2.7-i2v新协议）
-	NegativePrompt string          `json:"negative_prompt,omitempty"` // 反向提示词
-	Template       string          `json:"template,omitempty"`        // 视频特效模板
+	Prompt          string          `json:"prompt,omitempty"`           // 文本提示词
+	ImgURL          string          `json:"img_url,omitempty"`          // 首帧图像URL或Base64（图生视频）
+	FirstFrameURL   string          `json:"first_frame_url,omitempty"`  // 首帧图片URL（首尾帧生视频）
+	LastFrameURL    string          `json:"last_frame_url,omitempty"`   // 尾帧图片URL（首尾帧生视频）
+	AudioURL        string          `json:"audio_url,omitempty"`        // 音频URL（wan2.5支持）
+	Media           []AliVideoMedia `json:"media,omitempty"`            // 媒体列表（wan2.7-i2v新协议）
+	ReferenceImages []string        `json:"reference_images,omitempty"` // 参考图片列表（happyhorse-r2v）
+	NegativePrompt  string          `json:"negative_prompt,omitempty"`  // 反向提示词
+	Template        string          `json:"template,omitempty"`         // 视频特效模板
 }
 
 // AliVideoParameters 视频参数
 type AliVideoParameters struct {
 	Resolution   string `json:"resolution,omitempty"`    // 分辨率: 480P/720P/1080P（图生视频、首尾帧生视频）
+	Ratio        string `json:"ratio,omitempty"`         // 宽高比: 16:9/9:16/1:1/4:3/3:4（wan2.7）
 	Size         string `json:"size,omitempty"`          // 尺寸: 如 "832*480"（文生视频）
 	Duration     int    `json:"duration,omitempty"`      // 时长: 3-10秒
 	PromptExtend bool   `json:"prompt_extend,omitempty"` // 是否开启prompt智能改写
@@ -104,6 +106,7 @@ type AliMetadata struct {
 
 	// Parameters 相关
 	Resolution   *string `json:"resolution,omitempty"`    // 分辨率: 480P/720P/1080P
+	Ratio        *string `json:"ratio,omitempty"`         // 宽高比: 16:9/9:16/1:1/4:3/3:4
 	Size         *string `json:"size,omitempty"`          // 尺寸: 如 "832*480"
 	Duration     *int    `json:"duration,omitempty"`      // 时长
 	PromptExtend *bool   `json:"prompt_extend,omitempty"` // 是否开启prompt智能改写
@@ -201,6 +204,14 @@ func sizeToResolution(size string) (string, error) {
 func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) {
 	otherRatios := make(map[string]float64)
 	aliRatios := map[string]map[string]float64{
+		"wan2.7-t2v": {
+			"720P":  1,
+			"1080P": 1.100886 / 0.733924,
+		},
+		"wan2.6-t2v": {
+			"720P":  1,
+			"1080P": 1.100886 / 0.733924,
+		},
 		"wan2.6-i2v": {
 			"720P":  1,
 			"1080P": 1 / 0.6,
@@ -252,7 +263,13 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 			resolution = resolution + "P"
 		}
 	}
-	if otherRatio, ok := aliRatios[aliReq.Model]; ok {
+	otherRatio, ok := aliRatios[aliReq.Model]
+	if usesResolutionRatioVideoSpec(aliReq.Model) {
+		// wan2.7-t2v 与 happyhorse 全系列同价：720P 基准 1，1080P 按比例上浮
+		otherRatio = aliRatios["wan2.7-t2v"]
+		ok = true
+	}
+	if ok {
 		if ratio, ok := otherRatio[resolution]; ok {
 			otherRatios[fmt.Sprintf("resolution-%s", resolution)] = ratio
 		}
@@ -262,6 +279,52 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 
 func isWan27I2VModel(model string) bool {
 	return strings.HasPrefix(model, "wan2.7-i2v")
+}
+
+func isWan27T2VModel(model string) bool {
+	return strings.HasPrefix(model, "wan2.7-t2v")
+}
+
+func isHappyhorseModel(model string) bool {
+	return strings.HasPrefix(model, "happyhorse-")
+}
+
+func isHappyhorseR2VModel(model string) bool {
+	return isHappyhorseModel(model) && strings.HasSuffix(model, "-r2v")
+}
+
+func isHappyhorseI2VModel(model string) bool {
+	return isHappyhorseModel(model) && strings.HasSuffix(model, "-i2v")
+}
+
+// usesResolutionRatioVideoSpec 判断模型是否使用 resolution+ratio 新协议
+// （wan2.7-t2v 与 happyhorse 全系列），而非 legacy size 字段。
+func usesResolutionRatioVideoSpec(model string) bool {
+	return isWan27T2VModel(model) || isHappyhorseModel(model)
+}
+
+func wan27T2VVideoSpec(size string) (resolution string, ratio string, ok bool) {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(size), "x", "*"))
+	specs := map[string][2]string{
+		"1280*720":  {"720P", "16:9"},
+		"720*1280":  {"720P", "9:16"},
+		"960*960":   {"720P", "1:1"},
+		"1104*832":  {"720P", "4:3"},
+		"832*1104":  {"720P", "3:4"},
+		"1920*1080": {"1080P", "16:9"},
+		"1080*1920": {"1080P", "9:16"},
+		"1440*1440": {"1080P", "1:1"},
+		"1648*1248": {"1080P", "4:3"},
+		"1248*1648": {"1080P", "3:4"},
+	}
+	if normalized == "" {
+		return "720P", "16:9", true
+	}
+	spec, exists := specs[normalized]
+	if !exists {
+		return "", "", false
+	}
+	return spec[0], spec[1], true
 }
 
 func firstNonEmpty(values ...string) string {
@@ -347,6 +410,43 @@ func normalizeWan27I2VInput(aliReq *AliVideoRequest, req relaycommon.TaskSubmitR
 	return nil
 }
 
+// normalizeHappyhorseInput 处理 happyhorse 系列模型的图片输入：
+//   - i2v 使用 legacy input.img_url（构建时已从 image/images/input_reference 填充）
+//   - r2v 使用 input.reference_images 数组
+func normalizeHappyhorseInput(aliReq *AliVideoRequest, req relaycommon.TaskSubmitReq) error {
+	if !isHappyhorseModel(aliReq.Model) {
+		return nil
+	}
+
+	if isHappyhorseR2VModel(aliReq.Model) {
+		if len(aliReq.Input.ReferenceImages) == 0 {
+			images := make([]string, 0, len(req.Images))
+			for _, image := range req.Images {
+				if trimmed := strings.TrimSpace(image); trimmed != "" {
+					images = append(images, trimmed)
+				}
+			}
+			if len(images) == 0 {
+				if image := firstNonEmpty(aliReq.Input.ImgURL, firstTaskImage(req)); image != "" {
+					images = append(images, image)
+				}
+			}
+			aliReq.Input.ReferenceImages = images
+		}
+		if len(aliReq.Input.ReferenceImages) == 0 {
+			return fmt.Errorf("happyhorse r2v requires images, input_reference, or input.reference_images")
+		}
+		// r2v 使用 reference_images 数组，避免与 img_url 混发
+		aliReq.Input.ImgURL = ""
+		return nil
+	}
+
+	if isHappyhorseI2VModel(aliReq.Model) && strings.TrimSpace(aliReq.Input.ImgURL) == "" {
+		return fmt.Errorf("happyhorse i2v requires image, images, or input_reference")
+	}
+	return nil
+}
+
 func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relaycommon.TaskSubmitReq) (*AliVideoRequest, error) {
 	upstreamModel := req.Model
 	if info.IsModelMapped {
@@ -364,8 +464,16 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		},
 	}
 
-	// 处理分辨率映射
-	if req.Size != "" {
+	// Wan2.7 text-to-video replaced the legacy size field with resolution + ratio.
+	// Wan2.7-t2v 与 happyhorse 全系列使用 resolution + ratio 新协议，替代 legacy size 字段。
+	if usesResolutionRatioVideoSpec(aliReq.Model) {
+		resolution, ratio, ok := wan27T2VVideoSpec(req.Size)
+		if !ok {
+			return nil, fmt.Errorf("invalid %s size: %s", aliReq.Model, req.Size)
+		}
+		aliReq.Parameters.Resolution = resolution
+		aliReq.Parameters.Ratio = ratio
+	} else if req.Size != "" {
 		// text to video size must be contained *
 		if strings.Contains(req.Model, "t2v") && !strings.Contains(req.Size, "*") {
 			return nil, fmt.Errorf("invalid size: %s, example: %s", req.Size, "1920*1080")
@@ -435,8 +543,21 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	if aliReq.Model != upstreamModel {
 		return nil, errors.New("can't change model with metadata")
 	}
+	if usesResolutionRatioVideoSpec(aliReq.Model) {
+		aliReq.Parameters.Size = ""
+		if aliReq.Parameters.Resolution == "" {
+			aliReq.Parameters.Resolution = "720P"
+		}
+		if aliReq.Parameters.Ratio == "" {
+			aliReq.Parameters.Ratio = "16:9"
+		}
+	}
 
 	if err := normalizeWan27I2VInput(aliReq, req); err != nil {
+		return nil, err
+	}
+
+	if err := normalizeHappyhorseInput(aliReq, req); err != nil {
 		return nil, err
 	}
 

@@ -117,6 +117,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	// 虚拟模型 auto：按任务特征把模型改写为最合适的实际模型，
+	// 后续的渠道、计费、日志全部按改写后的模型结算
+	if textRequest, ok := request.(*dto.GeneralOpenAIRequest); ok && service.IsAutoModel(textRequest.Model) {
+		resolved := service.ResolveAutoRequestModel(textRequest)
+		c.Set("original_model", resolved)
+		logger.LogInfo(c, fmt.Sprintf("虚拟模型 auto 路由到 %s", resolved))
+	}
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)

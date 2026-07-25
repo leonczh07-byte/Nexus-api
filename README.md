@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **This is a fork maintained by Taida Tech**, based on tag `v1.0.0-rc.21` of
+> [QuantumNous/new-api](https://github.com/QuantumNous/new-api), published under **AGPLv3 §13**
+> as the corresponding source of our production gateway.
+> See **[TAIDA_MODIFICATIONS.md](TAIDA_MODIFICATIONS.md)** for the full list of changes.
+>
+> 本仓库为 Taida Tech 维护的 fork，基于上游 `v1.0.0-rc.21`，依据 AGPLv3 第 13 条公开，
+> 即我们生产网关的对应源码。修改清单见 [TAIDA_MODIFICATIONS.md](TAIDA_MODIFICATIONS.md)。
+
 <div align="center">
 
 ![new-api](/web/default/public/logo.png)

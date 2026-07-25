@@ -62,6 +62,36 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	assert.Equal(t, 4, got.RequestCount)
 }
 
+func TestDecreaseUserQuotaNeverOverdraws(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := User{Id: 30, Username: "atomic-quota-user", Password: "password", Status: common.UserStatusEnabled, Quota: 100}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NoError(t, DecreaseUserQuota(user.Id, 80, false))
+	require.ErrorIs(t, DecreaseUserQuota(user.Id, 21, false), ErrInsufficientUserQuota)
+
+	var got User
+	require.NoError(t, DB.First(&got, user.Id).Error)
+	assert.Equal(t, 20, got.Quota)
+	require.NoError(t, DecreaseUserQuota(user.Id, 20, false))
+	require.NoError(t, DB.First(&got, user.Id).Error)
+	assert.Zero(t, got.Quota)
+}
+
+func TestDecreaseTokenQuotaNeverOverdraws(t *testing.T) {
+	setupUserUpdateTestState(t)
+	token := Token{Id: 31, UserId: 1, Key: "atomic-token-key", Status: common.TokenStatusEnabled, RemainQuota: 100}
+	require.NoError(t, DB.Create(&token).Error)
+
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 80))
+	require.ErrorIs(t, DecreaseTokenQuota(token.Id, token.Key, 21), ErrInsufficientTokenQuota)
+
+	var got Token
+	require.NoError(t, DB.First(&got, token.Id).Error)
+	assert.Equal(t, 20, got.RemainQuota)
+	assert.Equal(t, 80, got.UsedQuota)
+}
+
 func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	setupUserUpdateTestState(t)
 
