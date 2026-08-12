@@ -1,5 +1,28 @@
 <div align="center">
 
+# Taida Tech Nexus API
+
+**Unified AI API Gateway for the Thai Market**
+
+Taida Tech Nexus API is Taida Tech's commercial AI gateway distribution for unified access to text, image, video, audio, embedding, and other AI services.
+
+</div>
+
+> [!IMPORTANT]
+> **Origin and license notice:** Taida Tech Nexus API is a modified distribution built on [New API](https://github.com/QuantumNous/new-api). It is maintained by Taida Tech and is not the original New API project. Commercial operation is permitted under the GNU Affero General Public License v3.0 when all applicable obligations are met, including preserving legal notices and attribution, clearly marking modifications, and offering network users access to the complete corresponding source code under AGPLv3 Section 13. A separate license from the upstream maintainers is required if an organization wants to avoid the open-source obligations of AGPLv3.
+
+Required upstream attribution:
+
+> Frontend design and development by New API contributors.
+
+Original project: [QuantumNous/new-api](https://github.com/QuantumNous/new-api)
+
+---
+
+## Upstream Project Information
+
+<div align="center">
+
 ![new-api](/web/public/logo.png)
 
 # New API
